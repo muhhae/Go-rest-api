@@ -3,6 +3,7 @@ package connection
 import (
 	"context"
 	"log"
+	"os"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -16,8 +17,8 @@ func User() *mongo.Collection {
 }
 
 func InitConnection() {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017"))
-	log.Println("Connecting to MongoDB, result:", client)
+	mongo_host := os.Getenv("MONGO_HOST")
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongo_host))
 	if err != nil {
 		panic(err)
 	}
