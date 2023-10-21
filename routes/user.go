@@ -160,32 +160,12 @@ func signUp(ctx *gin.Context) {
 }
 
 func profile(ctx *gin.Context) {
-	userID, ok := ctx.Get("userID")
+	user, ok := ctx.Get("User")
 	if !ok {
-		ctx.AbortWithStatusJSON(400, gin.H{
-			"error": "User ID is not found",
-		})
-		return
-	}
-	id, err := primitive.ObjectIDFromHex(userID.(string))
-	if err != nil {
-		ctx.AbortWithStatusJSON(400, gin.H{
-			"error": err.Error(),
-		})
-	}
-	userData := connection.User().FindOne(context.TODO(), bson.M{"_id": id})
-	if userData.Err() == mongo.ErrNoDocuments {
 		ctx.AbortWithStatusJSON(400, gin.H{
 			"error": "User not found",
 		})
 		return
-	}
-	user := models.User{}
-	err = userData.Decode(&user)
-	if err != nil {
-		ctx.AbortWithStatusJSON(400, gin.H{
-			"error": err.Error(),
-		})
 	}
 	ctx.JSON(200, gin.H{
 		"user": user,

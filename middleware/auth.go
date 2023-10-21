@@ -1,10 +1,15 @@
 package middleware
 
 import (
+	"context"
 	"os"
+	"rest-api/connection"
+	"rest-api/models"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 func Auth(ctx *gin.Context) {
@@ -39,6 +44,28 @@ func Auth(ctx *gin.Context) {
 		})
 		return
 	}
-	ctx.Set("userID", claims["id"])
+	userID, err := primitive.ObjectIDFromHex(claims["id"].(string))
+	if err != nil {
+		ctx.AbortWithStatusJSON(401, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+	user_data := connection.User().FindOne(context.TODO(), bson.M{"_id": userID})
+	if user_data.Err() != nil {
+		ctx.AbortWithStatusJSON(401, gin.H{
+			"error": user_data.Err().Error(),
+		})
+		return
+	}
+	user := models.User{}
+	err = user_data.Decode(&user)
+	if err != nil {
+		ctx.AbortWithStatusJSON(401, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+	ctx.Set("User", user)
 	ctx.Next()
 }

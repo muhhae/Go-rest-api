@@ -11,9 +11,13 @@ import (
 )
 
 var user_col *mongo.Collection
-
 func User() *mongo.Collection {
 	return user_col
+}
+
+var post_col *mongo.Collection
+func Post() *mongo.Collection {
+	return post_col
 }
 
 func InitConnection() {
@@ -25,6 +29,9 @@ func InitConnection() {
 	if err := client.Ping(context.TODO(), readpref.Primary()); err != nil {
 		panic(err)
 	}
+
 	user_col = client.Database("golang").Collection("user")
+	post_col = client.Database("golang").Collection("post")
+
 	log.Println("Connected to MongoDB")
 }

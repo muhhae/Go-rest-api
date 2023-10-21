@@ -12,8 +12,8 @@ func SetRoutes(router *gin.Engine) {
 				"message": "API is working",
 			})
 		})
-		
-		InitUserRoute(home)
 
+		InitUserRoute(home)
+		InitPostRoute(home)
 	}
 }
