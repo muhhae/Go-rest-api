@@ -2,7 +2,9 @@ package routes
 
 import (
 	"context"
+	"os"
 	"rest-api/connection"
+	"rest-api/middleware"
 	"rest-api/models"
 	"time"
 
@@ -24,6 +26,7 @@ func InitUserRoute(router *gin.RouterGroup) {
 		})
 		user.GET("/sign-in", signIn)
 		user.POST("/sign-up", signUp)
+		user.GET("/profile", middleware.Auth, profile)
 	}
 }
 
@@ -65,8 +68,8 @@ func signIn(context *gin.Context) {
 	token := jwt.New(jwt.SigningMethodHS256)
 	token_claim := token.Claims.(jwt.MapClaims)
 	token_claim["id"] = user.ID
-	token_claim["exp"] = time.Now().Add(time.Hour * 24)
-	token_string, err := token.SignedString([]byte("SecretSample"))
+	token_claim["exp"] = time.Now().Add(time.Hour * 24).Unix()
+	token_string, err := token.SignedString([]byte(os.Getenv("SECRET_KEY")))
 	if err != nil {
 		context.AbortWithStatusJSON(400, gin.H{
 			"error": err.Error(),
@@ -153,5 +156,38 @@ func signUp(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
 		"message":       "Sign up successfully",
 		"new_user_data": new_user,
+	})
+}
+
+func profile(ctx *gin.Context) {
+	userID, ok := ctx.Get("userID")
+	if !ok {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": "User ID is not found",
+		})
+		return
+	}
+	id, err := primitive.ObjectIDFromHex(userID.(string))
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": err.Error(),
+		})
+	}
+	userData := connection.User().FindOne(context.TODO(), bson.M{"_id": id})
+	if userData.Err() == mongo.ErrNoDocuments {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": "User not found",
+		})
+		return
+	}
+	user := models.User{}
+	err = userData.Decode(&user)
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": err.Error(),
+		})
+	}
+	ctx.JSON(200, gin.H{
+		"user": user,
 	})
 }
