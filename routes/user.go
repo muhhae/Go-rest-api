@@ -4,8 +4,14 @@ import (
 	"context"
 	"rest-api/connection"
 	"rest-api/models"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func InitUserRoute(router *gin.RouterGroup) {
@@ -28,32 +34,49 @@ func signIn(context *gin.Context) {
 		})
 		return
 	}
-	data := make(map[string]interface{})
-	err := context.BindJSON(&data)
-
+	user_input := models.User{}
+	err := context.BindJSON(&user_input)
 	if err != nil {
 		context.AbortWithStatusJSON(400, gin.H{
 			"error": err.Error(),
 		})
 		return
 	}
-
-	if data["username"] == nil || data["password"] == nil {
+	userData := connection.User().FindOne(context, bson.M{"email": user_input.Email})
+	if userData.Err() == mongo.ErrNoDocuments {
 		context.AbortWithStatusJSON(400, gin.H{
-			"error": "Username or password is missing",
+			"error": "Email is not registered",
 		})
 		return
 	}
-
-	if data["username"] != "admin" || data["password"] != "admin" {
-		context.AbortWithStatusJSON(401, gin.H{
-			"error": "Username or password is incorrect",
+	user := models.User{}
+	err = userData.Decode(&user)
+	if err != nil {
+		context.AbortWithStatusJSON(400, gin.H{
+			"error": err.Error(),
+		})
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(user_input.Password)); err != nil {
+		context.AbortWithStatusJSON(400, gin.H{
+			"error": "Wrong password",
 		})
 		return
+	}
+	token := jwt.New(jwt.SigningMethodHS256)
+	token_claim := token.Claims.(jwt.MapClaims)
+	token_claim["id"] = user.ID
+	token_claim["exp"] = time.Now().Add(time.Hour * 24)
+	token_string, err := token.SignedString([]byte("SecretSample"))
+	if err != nil {
+		context.AbortWithStatusJSON(400, gin.H{
+			"error": err.Error(),
+		})
 	}
 
 	context.JSON(200, gin.H{
 		"message": "Sign in successfully",
+		"token":   token_string,
+		"user":    user,
 	})
 }
 
@@ -64,8 +87,8 @@ func signUp(ctx *gin.Context) {
 		})
 		return
 	}
-	data := make(map[string]interface{})
-	err := ctx.BindJSON(&data)
+	new_user := models.User{}
+	err := ctx.BindJSON(&new_user)
 
 	if err != nil {
 		ctx.AbortWithStatusJSON(400, gin.H{
@@ -74,17 +97,52 @@ func signUp(ctx *gin.Context) {
 		return
 	}
 
-	if data["username"] == nil || data["password"] == nil {
+	if new_user.Username == "" || new_user.Password == "" || new_user.Email == "" {
 		ctx.AbortWithStatusJSON(400, gin.H{
-			"error": "Username or password is missing",
+			"error": "Email or username or password is missing",
 		})
 		return
 	}
 
-	user_col := connection.User()
-	new_user := models.User{Username: data["username"].(string), Password: data["password"].(string)}
+	if count, err := connection.User().CountDocuments(context.TODO(), bson.M{"email": new_user.Email}); err == nil && count > 0 {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": "Email is already taken",
+		})
+		return
+	} else if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
 
-	res, err := user_col.InsertOne(context.TODO(), new_user)
+	if count, err := connection.User().CountDocuments(context.TODO(), bson.M{"username": new_user.Username}); err == nil && count > 0 {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": "Username is already taken",
+		})
+		return
+	} else if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(new_user.Password), 10)
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	new_user.Password = string(hashedPassword)
+	new_user.Role = "user"
+	new_user.Verified = false
+
+	res, err := connection.User().InsertOne(context.TODO(), new_user)
+	new_user.ID = res.InsertedID.(primitive.ObjectID)
+
 	if err != nil {
 		ctx.AbortWithStatusJSON(400, gin.H{
 			"message": "Sign up failed",
@@ -93,7 +151,7 @@ func signUp(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{
-		"message": "Sign up successfully",
-		"newUserID":  res.InsertedID,
+		"message":       "Sign up successfully",
+		"new_user_data": new_user,
 	})
 }
